@@ -7,8 +7,8 @@ import resourceRoutes from "./resource.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
-router.use("/", interviewRoutes);
+router.use("/interview", interviewRoutes);
 router.use("/quiz", quizRoutes);
-router.use("/resources", resourceRoutes);
+router.use("/resource", resourceRoutes);
 
 export default router;

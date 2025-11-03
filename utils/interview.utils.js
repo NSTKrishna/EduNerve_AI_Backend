@@ -17,7 +17,7 @@ export const buildInterviewSections = (interviewType) => {
 export const buildInterviewConfig = (interviewType) => {
   return {
     type: "mock_interview",
-    duration: "15-20 minutes",
+    duration: "2-3 minutes",
     sections: buildInterviewSections(interviewType),
   };
 }; 

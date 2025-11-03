@@ -1,14 +1,13 @@
 import express from "express";
-import { register, login, getProfile, updateProfile } from "../controllers/auth.controller.js";
+import { register, login, getProfile, updateProfile, googleAuth } from "../controllers/auth.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Public routes
 router.post("/register", register);
 router.post("/login", login);
+router.post("/google", googleAuth);
 
-// Protected routes
 router.get("/profile", authenticate, getProfile);
 router.put("/profile", authenticate, updateProfile);
 

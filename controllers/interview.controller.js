@@ -9,6 +9,13 @@ export const startInterview = async (req, res, next) => {
     const { role, interviewType, technologies } = req.body;
     const userId = req.user?.userId; 
 
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required to start an interview"
+      });
+    } 
+
     console.log("Generating interview prompt with Gemini for:", {
       role,
       interviewType,
@@ -23,18 +30,17 @@ export const startInterview = async (req, res, next) => {
 
     console.log("Generated prompt:", systemPrompt.substring(0, 200) + "...");
 
-    let interview = null;
-    if (userId) {
-      interview = await prisma.interview.create({
-        data: {
-          userId,
-          role,
-          interviewType,
-          technologies,
-          status: "in_progress"
-        }
-      });
-    }
+    const interview = await prisma.interview.create({
+      data: {
+        userId,
+        role,
+        interviewType,
+        technologies,
+        status: "in_progress"
+      }
+    });
+
+    console.log("Interview created with ID:", interview.id);
 
     const interviewConfig = buildInterviewConfig(interviewType);
 
@@ -44,7 +50,7 @@ export const startInterview = async (req, res, next) => {
       role,
       interviewType,
       technologies,
-      interviewId: interview?.id,
+      interviewId: interview.id,
       systemPrompt,
       interviewConfig,
     }); 

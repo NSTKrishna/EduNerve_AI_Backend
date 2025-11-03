@@ -68,8 +68,9 @@ export async function generateQuiz(req, res, next) {
 export async function saveQuizResult(req, res, next) {
   try {
     const { category, subtopics, score, total, percentage, level } = req.body;
+    const userId = req.user?.id || null; // Get userId from auth middleware if available
      
-    if (!category || !score || !total || !percentage || !level) {
+    if (!category || score === undefined || !total || percentage === undefined || !level) {
       return res.status(400).json({ 
         success: false,
         error: "Category, score, total, percentage, and level are required" 
@@ -78,6 +79,7 @@ export async function saveQuizResult(req, res, next) {
 
     const result = await prisma.quizResult.create({
       data: {
+        userId,
         category,
         subtopics: subtopics || [],
         score,

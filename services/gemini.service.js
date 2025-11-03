@@ -20,7 +20,7 @@ export async function generateInterviewPrompt({ role, interviewType, technologie
 **Requirements:**
 Create a detailed system prompt that instructs the AI interviewer to:
 
-1. **Interview Structure** (15-20 minutes total):
+1. **Interview Structure** (2-3 minutes total):
    - Introduction (1-2 min): Warm greeting, ask for self-introduction
    ${interviewType === "technical" || interviewType === "mixed" ? `- Technical Questions (5-7 min): Ask 4-6 progressive difficulty questions about ${technologies.join(", ")}` : ""}
    ${interviewType === "technical" || interviewType === "mixed" ? `- Problem-Solving (3-5 min): Present a practical coding/technical problem` : ""}

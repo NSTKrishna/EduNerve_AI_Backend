@@ -8,11 +8,17 @@ export async function register(req, res, next) {
   try {
     const { email, password, name, role, experience, skills } = req.body;
 
-
-    if (!email || !password || !name) {
+    if (!email || !name) {
       return res.status(400).json({
         success: false,
-        error: "Email, password, and name are required"
+        error: "Email and name are required"
+      });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: "Password must be at least 6 characters"
       });
     }
 
@@ -34,6 +40,7 @@ export async function register(req, res, next) {
         email,
         password: hashedPassword,
         name,
+        provider: "credentials",
         role: role || null,
         experience: experience || null,
         skills: skills || []
@@ -42,6 +49,8 @@ export async function register(req, res, next) {
         id: true,
         email: true,
         name: true,
+        avatar: true,
+        provider: true,
         role: true,
         experience: true,
         skills: true,
@@ -49,11 +58,20 @@ export async function register(req, res, next) {
       }
     });
 
+    console.log("✅ User created successfully:", {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role
+    });
+
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       config.jwtSecret || "your-secret-key",
       { expiresIn: "7d" }
     );
+
+    console.log("✅ JWT token generated for user:", user.email);
 
     res.status(201).json({
       success: true,
@@ -145,8 +163,17 @@ export async function getProfile(req, res, next) {
             interviewType: true,
             status: true,
             overallScore: true,
+            technicalScore: true,
+            communicationScore: true,
+            problemSolvingScore: true,
             startedAt: true,
-            completedAt: true
+            completedAt: true,
+            feedback: true,
+            strengths: true,
+            weakAreas: true,
+            transcript: true,
+            aiAnalysis: true,
+            duration: true
           },
           orderBy: {
             startedAt: 'desc'
@@ -201,7 +228,7 @@ export async function updateProfile(req, res, next) {
         ...(experience && { experience }),
         ...(skills && { skills })
       },
-      select: {
+      select: { 
         id: true,
         email: true,
         name: true,
@@ -219,6 +246,104 @@ export async function updateProfile(req, res, next) {
     });
   } catch (error) {
     console.error("Error in updateProfile:", error);
+    next(error);
+  }
+}
+
+export async function googleAuth(req, res, next) {
+  try {
+    const { email, name, googleId, picture } = req.body;
+
+    if (!email || !googleId) {
+      return res.status(400).json({
+        success: false,
+        error: "Email and Google ID are required"
+      });
+    }
+
+    // Check if user exists
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          { googleId }
+        ]
+      }
+    });
+
+    if (user) {
+      // User exists - update their info if needed
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId,
+          avatar: picture || user.avatar,
+          provider: "google",
+          name: name || user.name
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatar: true,
+          googleId: true,
+          provider: true,
+          role: true,
+          experience: true,
+          skills: true,
+          createdAt: true
+        }
+      });
+
+      console.log("✅ Existing Google user logged in:", user.email);
+    } else {
+      // Create new user
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: name || email.split("@")[0],
+          googleId,
+          avatar: picture,
+          provider: "google",
+          password: null // No password for Google users
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatar: true,
+          googleId: true,
+          provider: true,
+          role: true,
+          experience: true,
+          skills: true,
+          createdAt: true
+        }
+      });
+
+      console.log("✅ New Google user created:", {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      config.jwtSecret || "your-secret-key",
+      { expiresIn: "7d" }
+    );
+
+    console.log("✅ JWT token generated for Google user:", user.email);
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      user,
+      token
+    });
+  } catch (error) {
+    console.error("Error in googleAuth:", error);
     next(error);
   }
 }

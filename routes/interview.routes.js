@@ -14,11 +14,11 @@ const router = express.Router();
 // Health check route
 router.get("/health", healthCheck);
 
-// Start interview route (optional auth - can work without login)
-router.post("/start-interview", optionalAuth, validateInterviewRequest, startInterview);
+// Start interview route (requires authentication)
+router.post("/start-interview", authenticate, validateInterviewRequest, startInterview);
 
 // Complete interview and get feedback
-router.post("/complete", completeInterview);
+router.post("/complete", authenticate, completeInterview);
 
 // Get specific interview with recommendations
 router.get("/:interviewId", getInterview);

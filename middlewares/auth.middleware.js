@@ -5,12 +5,19 @@ export function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
 
+    console.log("Auth middleware:", { 
+      hasAuthHeader: !!authHeader,
+      authHeader: authHeader?.substring(0, 30) + "...",
+      path: req.path
+    });
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("No valid auth header");
       return res.status(401).json({
         success: false,
         error: "Authentication required. Please provide a valid token."
       });
-    }
+    } 
 
     const token = authHeader.substring(7); // Remove "Bearer " prefix
 

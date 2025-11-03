@@ -6,12 +6,15 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
+ 
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
-  password      String
+  password      String?   // Made optional for Google OAuth
   name          String
+  avatar        String?   // User profile picture/avatar URL
+  googleId      String?   @unique // Google OAuth ID
+  provider      String?   // "google" or "credentials"
   role          String?   
   experience    String?   
   skills        String[] 
