@@ -1,0 +1,48 @@
+{
+  "name": "edunerve_ai_backend",
+  "version": "1.0.0",
+  "description": "AI-powered mock interview platform with Gemini AI and VAPI integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:push": "prisma db push",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khuswant18/EduNerve_AI_Backend.git"
+  },
+  "keywords": [
+    "ai",
+    "interview",
+    "mock-interview",
+    "gemini",
+    "vapi",
+    "voice-ai"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/khuswant18/EduNerve_AI_Backend/issues"
+  },
+  "homepage": "https://github.com/khuswant18/EduNerve_AI_Backend#readme",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^6.18.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
+    "nodemon": "^3.1.10"
+  },
+  "devDependencies": {
+    "prisma": "^6.18.0"
+  }
+}
