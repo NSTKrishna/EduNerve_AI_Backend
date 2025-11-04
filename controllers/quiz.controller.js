@@ -160,4 +160,4 @@ export async function deleteQuiz(req, res, next) {
     console.error("Error deleting quiz:", err);
     next(err);
   }
-}
+} 
