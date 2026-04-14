@@ -13,6 +13,10 @@ const corsOptions = {
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000",
+    // Vercel deployments (preview + production)
+    "https://edu-nerve-ai-frontend.vercel.app",
+    "https://edu-nerve-ai-frontend-liard.vercel.app",
+    "https://edu-nerve-ai-frontend-loaznc6p4-nstkrishnas-projects.vercel.app",
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
