@@ -22,7 +22,6 @@ model User {
   updatedAt     DateTime  @updatedAt
   
   interviews    Interview[]
-  quizResults   QuizResult[]
 }
 
 model Interview {
@@ -52,69 +51,6 @@ model Interview {
   weakAreas         String[] 
   strengths         String[] 
   
-  recommendations   Recommendation[]
-  
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
-
-model Recommendation {
-  id            String   @id @default(uuid())
-  interviewId   String
-  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
-  
-  category      String   
-  topic         String   
-  title         String
-  url           String
-  description   String?
-  priority      Int      @default(0) // Higher = more important
-  
-  createdAt     DateTime @default(now())
-}
-
-model Resource {
-  id          String   @id @default(uuid())
-  category    String  
-  topic       String   
-  subtopic    String?  
-  title       String
-  url         String
-  description String?
-  difficulty  String?  
-  tags        String[] 
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([topic, subtopic])
-  @@index([category])
-}
-
-model message {
-  id        Int      @id @default(autoincrement())
-  content   String
-  createdAt DateTime @default(now())
-}
-
-model Quiz {
-  id         Int      @id @default(autoincrement())
-  question    String
-  options     String[] 
-  answer      String
-  createdAt   DateTime @default(now())
-}
-
-model QuizResult {
-  id         Int      @id @default(autoincrement())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
-  category   String
-  subtopics  String[]
-  score      Int
-  total      Int
-  percentage Float
-  level      String
-  createdAt  DateTime @default(now())
-}  

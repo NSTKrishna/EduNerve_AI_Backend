@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import prisma from "../db/config.js";
 import config from "../config/config.js";
 
-
 export async function register(req, res, next) {
   try {
     const { email, password, name, role, experience, skills } = req.body;
@@ -11,25 +10,25 @@ export async function register(req, res, next) {
     if (!email || !name) {
       return res.status(400).json({
         success: false,
-        error: "Email and name are required"
+        error: "Email and name are required",
       });
     }
 
     if (!password || password.length < 6) {
       return res.status(400).json({
         success: false,
-        error: "Password must be at least 6 characters"
+        error: "Password must be at least 6 characters",
       });
     }
 
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: "User with this email already exists"
+        error: "User with this email already exists",
       });
     }
 
@@ -43,7 +42,7 @@ export async function register(req, res, next) {
         provider: "credentials",
         role: role || null,
         experience: experience || null,
-        skills: skills || []
+        skills: skills || [],
       },
       select: {
         id: true,
@@ -54,21 +53,21 @@ export async function register(req, res, next) {
         role: true,
         experience: true,
         skills: true,
-        createdAt: true
-      }
+        createdAt: true,
+      },
     });
 
     console.log("✅ User created successfully:", {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role
+      role: user.role,
     });
 
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       config.jwtSecret || "your-secret-key",
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     console.log("✅ JWT token generated for user:", user.email);
@@ -77,14 +76,13 @@ export async function register(req, res, next) {
       success: true,
       message: "User registered successfully",
       user,
-      token
+      token,
     });
   } catch (error) {
     console.error("Error in register:", error);
     next(error);
   }
 }
-
 
 export async function login(req, res, next) {
   try {
@@ -93,18 +91,18 @@ export async function login(req, res, next) {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        error: "Email and password are required"
+        error: "Email and password are required",
       });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: "Invalid email or password"
+        error: "Invalid email or password",
       });
     }
 
@@ -113,14 +111,14 @@ export async function login(req, res, next) {
     if (!isValidPassword) {
       return res.status(401).json({
         success: false,
-        error: "Invalid email or password"
+        error: "Invalid email or password",
       });
     }
 
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       config.jwtSecret || "your-secret-key",
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res.json({
@@ -132,9 +130,9 @@ export async function login(req, res, next) {
         name: user.name,
         role: user.role,
         experience: user.experience,
-        skills: user.skills
+        skills: user.skills,
       },
-      token
+      token,
     });
   } catch (error) {
     console.error("Error in login:", error);
@@ -173,44 +171,68 @@ export async function getProfile(req, res, next) {
             weakAreas: true,
             transcript: true,
             aiAnalysis: true,
-            duration: true
+            duration: true,
           },
           orderBy: {
-            startedAt: 'desc'
+            startedAt: "desc",
           },
-          take: 10
+          take: 10,
         },
-        quizResults: {
-          select: {
-            id: true,
-            category: true,
-            score: true,
-            total: true,
-            percentage: true,
-            level: true,
-            createdAt: true
-          },
-          orderBy: {
-            createdAt: 'desc'
-          },
-          take: 10
-        }
-      }
+      },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "User not found"
+        error: "User not found",
       });
     }
 
     res.json({
       success: true,
-      user
+      user,
     });
   } catch (error) {
     console.error("Error in getProfile:", error);
+    next(error);
+  }
+}
+
+export async function getDashboard(req, res, next) {
+  try {
+    const userId = req.user.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        skills: true,
+        _count: {
+          select: {
+            interviews: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    const interviewSessions = user._count.interviews;
+    const skillsTracked = user.skills ? user.skills.length : 0;
+
+    res.json({
+      success: true,
+      data: {
+        skillsTracked,
+        interviewSessions,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getDashboard:", error);
     next(error);
   }
 }
@@ -226,124 +248,26 @@ export async function updateProfile(req, res, next) {
         ...(name && { name }),
         ...(role && { role }),
         ...(experience && { experience }),
-        ...(skills && { skills })
+        ...(skills && { skills }),
       },
-      select: { 
+      select: {
         id: true,
         email: true,
         name: true,
         role: true,
         experience: true,
         skills: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      user: updatedUser
+      user: updatedUser,
     });
   } catch (error) {
     console.error("Error in updateProfile:", error);
-    next(error);
-  }
-}
-
-export async function googleAuth(req, res, next) {
-  try {
-    const { email, name, googleId, picture } = req.body;
-
-    if (!email || !googleId) {
-      return res.status(400).json({
-        success: false,
-        error: "Email and Google ID are required"
-      });
-    }
-
-    // Check if user exists
-    let user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email },
-          { googleId }
-        ]
-      }
-    });
-
-    if (user) {
-      // User exists - update their info if needed
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          googleId,
-          avatar: picture || user.avatar,
-          provider: "google",
-          name: name || user.name
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          avatar: true,
-          googleId: true,
-          provider: true,
-          role: true,
-          experience: true,
-          skills: true,
-          createdAt: true
-        }
-      });
-
-      console.log("✅ Existing Google user logged in:", user.email);
-    } else {
-      // Create new user
-      user = await prisma.user.create({
-        data: {
-          email,
-          name: name || email.split("@")[0],
-          googleId,
-          avatar: picture,
-          provider: "google",
-          password: null // No password for Google users
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          avatar: true,
-          googleId: true,
-          provider: true,
-          role: true,
-          experience: true,
-          skills: true,
-          createdAt: true
-        }
-      });
-
-      console.log("✅ New Google user created:", {
-        id: user.id,
-        email: user.email,
-        name: user.name
-      });
-    }
-
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      config.jwtSecret || "your-secret-key",
-      { expiresIn: "7d" }
-    );
-
-    console.log("✅ JWT token generated for Google user:", user.email);
-
-    res.json({
-      success: true,
-      message: "Login successful",
-      user,
-      token
-    });
-  } catch (error) {
-    console.error("Error in googleAuth:", error);
     next(error);
   }
 }

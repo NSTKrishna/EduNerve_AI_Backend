@@ -1,15 +1,16 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-
-export async function generateInterviewPrompt({ role, interviewType, technologies }) {
+export async function generateInterviewPrompt({
+  role,
+  interviewType,
+  technologies,
+}) {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-
     const prompt = `You are an expert interview coach. Generate a comprehensive system prompt for an AI interviewer that will conduct a mock interview.
 
 **Interview Details:**
@@ -45,9 +46,12 @@ Create a detailed system prompt that instructs the AI interviewer to:
 **Output Format:**
 Provide ONLY the system prompt text that will be given to the AI interviewer. Make it detailed, actionable, and specific to the role and technologies. Do not include any preamble or explanation - just the system prompt itself that starts with "You are..." `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const generatedPrompt = response.text();
+    const completion = await groq.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "llama3-8b-8192",
+    });
+
+    const generatedPrompt = completion.choices[0]?.message?.content || "";
 
     return generatedPrompt.trim();
   } catch (error) {
@@ -83,9 +87,9 @@ ${interviewType === "mixed" ? "4" : "2"}. **Behavioral Questions (3-5 minutes)**
 ${techSection}
 ${behavioralSection}
 
-${interviewType === "mixed" ? "5" : (interviewType === "technical" ? "4" : "3")}. **Candidate Questions (1-2 minutes)**: Ask if they have any questions for you about the role or company.
+${interviewType === "mixed" ? "5" : interviewType === "technical" ? "4" : "3"}. **Candidate Questions (1-2 minutes)**: Ask if they have any questions for you about the role or company.
 
-${interviewType === "mixed" ? "6" : (interviewType === "technical" ? "5" : "4")}. **Closing & Feedback (1-2 minutes)**: Thank them, provide brief constructive feedback on their performance highlighting strengths and areas for improvement.
+${interviewType === "mixed" ? "6" : interviewType === "technical" ? "5" : "4"}. **Closing & Feedback (1-2 minutes)**: Thank them, provide brief constructive feedback on their performance highlighting strengths and areas for improvement.
 
 **Interview Guidelines:**
 - Be professional, friendly, and encouraging

@@ -1,177 +1,194 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 import config from "../config/config.js";
 
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+const groq = new Groq({
+  apiKey: config.groqApiKey || process.env.GROQ_API_KEY,
+});
 
-export async function generateInterviewFeedback(interviewData) { 
-  try {
-    const { role, interviewType, technologies, transcript } = interviewData;
+/**
+ * Contract:
+ * Input: { role, interviewType, technologies: string[], transcript: any }
+ * Output: {
+ *  feedback: string,
+ *  detailedAnalysis: object,
+ *  technicalScore?: number,
+ *  communicationScore?: number,
+ *  problemSolvingScore?: number,
+ *  overallScore?: number,
+ *  strengths: string[],
+ *  weakAreas: string[]
+ * }
+ */
+export async function generateInterviewFeedback({
+  role,
+  interviewType,
+  technologies,
+  transcript,
+}) {
+  const safeTech = Array.isArray(technologies) ? technologies : [];
+  const safeTranscript = transcript ?? [];
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
-      generationConfig: {
-        maxOutputTokens: 4000,
-        temperature: 0.7,
-        responseMimeType: "application/json",
-      },
-    });
-
-    const prompt = `
-You are an expert technical interviewer. Analyze this interview transcript and provide detailed feedback.
-
-Interview Details:
-- Role: ${role}
-- Interview Type: ${interviewType}
-- Technologies: ${technologies.join(", ")}
-
-Transcript:
-${JSON.stringify(transcript, null, 2)}
-
-Provide a comprehensive analysis in this exact JSON format:
-{
-  "feedback": "Overall detailed feedback about the candidate's performance (200-300 words)",
-  "technicalScore": 75.5,
-  "communicationScore": 80.0,
-  "problemSolvingScore": 70.0,
-  "overallScore": 75.0,
-  "strengths": [
-    "Clear explanation of React concepts",
-    "Good understanding of async/await",
-    "Excellent communication skills"
-  ],
-  "weakAreas": [
-    "Struggled with system design questions",
-    "Limited knowledge of database optimization",
-    "Could improve on data structures complexity analysis"
-  ],
-  "detailedAnalysis": {
-    "technical": "Analysis of technical knowledge demonstrated",
-    "communication": "Analysis of communication style and clarity",
-    "problemSolving": "Analysis of problem-solving approach"
-  },
-  "improvementAreas": [
-    {
-      "topic": "System Design",
-      "priority": "high",
-      "description": "Focus on scalability patterns and microservices architecture"
-    },
-    {
-      "topic": "Database Optimization",
-      "priority": "medium",
-      "description": "Learn about indexing strategies and query optimization"
-    }
-  ]
-}
-
-Guidelines:
-- Scores should be 0-100 (use decimals)
-- Be specific and constructive
-- Identify 3-5 strengths and 3-5 weak areas
-- Provide actionable improvement suggestions
-- Base analysis on actual transcript content
-`;
-
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
-
-
-    let cleanText = text.trim();
-    if (cleanText.startsWith("```json")) {
-      cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?$/g, "");
-    } else if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/```\n?/g, "");
-    }
-    cleanText = cleanText.trim();
-
-    const analysisData = JSON.parse(cleanText);
-
-    if (!analysisData.feedback || !analysisData.overallScore) {
-      throw new Error("Invalid AI response structure");
-    }
-
-    return analysisData;
-  } catch (error) {
-    console.error("Error generating interview feedback:", error);
-    throw error;
+  // If GROQ key isn’t configured, return a deterministic fallback so dashboard still works.
+  if (!groq?.apiKey) {
+    return fallbackFeedback({ role, interviewType, technologies: safeTech });
   }
-}
 
-export async function generateResourceRecommendations(weakAreas, role, technologies) {
-  try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
-      generationConfig: {
-        maxOutputTokens: 3000,
-        temperature: 0.7,
-        responseMimeType: "application/json",
-      },
-    });  
+  const prompt = `You are an interview evaluator.
 
-    const prompt = `
-You are a technical learning advisor. Generate learning resource recommendations.
+Evaluate this mock interview and return ONLY valid JSON.
 
 Context:
-- Target Role: ${role}
-- Technologies: ${technologies.join(", ")}
-- Weak Areas Identified: ${weakAreas.join(", ")}
+- Role: ${role}
+- Interview type: ${interviewType}
+- Technologies: ${safeTech.join(", ") || "N/A"}
 
-Generate 8-12 high-quality learning resources in this exact JSON format:
+Transcript (may be array or object):
+${JSON.stringify(safeTranscript).slice(0, 12000)}
+
+Return JSON in exactly this shape:
 {
-  "recommendations": [
-    {
-      "category": "documentation",
-      "topic": "React Hooks", 
-      "title": "React Official Documentation - Hooks",
-      "url": "https://react.dev/reference/react",
-      "description": "Comprehensive guide to React Hooks with examples",
-      "priority": 10
-    },
-    {
-      "category": "video",
-      "topic": "System Design",
-      "title": "System Design Interview Course",
-      "url": "https://www.youtube.com/watch?v=example",
-      "description": "Complete system design fundamentals",
-      "priority": 9
-    },
-    {
-      "category": "article",
-      "topic": "Database Optimization",
-      "title": "SQL Query Optimization Guide",
-      "url": "https://example.com/sql-optimization",
-      "description": "Best practices for database performance",
-      "priority": 8
-    }
-  ]
+  "feedback": "string",
+  "scores": {
+    "technical": 0-10,
+    "communication": 0-10,
+    "problemSolving": 0-10,
+    "overall": 0-10
+  },
+  "strengths": ["..."],
+  "weakAreas": ["..."],
+  "detailedAnalysis": {
+    "summary": "string",
+    "notes": ["..."]
+  }
 }
 
-Guidelines:
-- Provide REAL, working URLs (use official documentation, YouTube, Medium, dev.to, etc.)
-- Categories: "documentation", "video", "article", "course"
-- Priority: 1-10 (10 = highest priority)
-- Focus on the identified weak areas
-- Include mix of free and high-quality resources
-- Prefer official documentation and reputable sources
-`;
+Rules:
+- Scores must be numbers.
+- strengths/weakAreas must be arrays of strings.
+- detailedAnalysis must be an object.
+- Output ONLY JSON, no markdown.`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+  const completion = await groq.chat.completions.create({
+    messages: [{ role: "user", content: prompt }],
+    model: "llama-3.3-70b-versatile",
+    temperature: 0.4,
+    max_tokens: 2000,
+  });
 
-    let cleanText = text.trim();
-    if (cleanText.startsWith("```json")) {
-      cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?$/g, "");
-    } else if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/```\n?/g, "");
-    }
-    cleanText = cleanText.trim();
-
-    const recommendationsData = JSON.parse(cleanText);
-
-    return recommendationsData.recommendations || [];
-  } catch (error) {
-    console.error("Error generating resource recommendations:", error);
-    throw error;
+  let text = completion.choices[0]?.message?.content || "";
+  text = text.trim();
+  if (text.startsWith("```")) {
+    text = text
+      .replace(/^```(json)?\n?/i, "")
+      .replace(/```$/i, "")
+      .trim();
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Hard fallback if the model didn’t comply.
+    return fallbackFeedback({ role, interviewType, technologies: safeTech });
+  }
+
+  const scores = parsed?.scores || {};
+
+  const technicalScore = toScore(scores.technical);
+  const communicationScore = toScore(scores.communication);
+  const problemSolvingScore = toScore(scores.problemSolving);
+  const overallScore = deriveOverallScore({
+    modelOverall: toScore(scores.overall),
+    technicalScore,
+    communicationScore,
+    problemSolvingScore,
+  });
+
+  const detailedAnalysis =
+    parsed?.detailedAnalysis && typeof parsed.detailedAnalysis === "object"
+      ? parsed.detailedAnalysis
+      : { summary: "", notes: [] };
+
+  return {
+    feedback: String(parsed?.feedback || ""),
+    // Stored into Interview.aiAnalysis
+    detailedAnalysis: {
+      ...detailedAnalysis,
+      generatedAt: new Date().toISOString(),
+      rubric: {
+        scale: "0-10",
+        fields: [
+          "technicalScore",
+          "communicationScore",
+          "problemSolvingScore",
+          "overallScore",
+        ],
+      },
+      scores: {
+        technical: technicalScore,
+        communication: communicationScore,
+        problemSolving: problemSolvingScore,
+        overall: overallScore,
+      },
+    },
+    technicalScore,
+    communicationScore,
+    problemSolvingScore,
+    overallScore,
+    strengths: Array.isArray(parsed?.strengths)
+      ? parsed.strengths.map(String)
+      : [],
+    weakAreas: Array.isArray(parsed?.weakAreas)
+      ? parsed.weakAreas.map(String)
+      : [],
+  };
+}
+
+function toScore(v) {
+  const n = Number(v);
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(10, n));
+}
+
+function deriveOverallScore({
+  modelOverall,
+  technicalScore,
+  communicationScore,
+  problemSolvingScore,
+}) {
+  // Prefer model-provided overall if valid.
+  if (typeof modelOverall === "number") return modelOverall;
+
+  const parts = [
+    technicalScore,
+    communicationScore,
+    problemSolvingScore,
+  ].filter((v) => typeof v === "number");
+
+  if (parts.length === 0) return null;
+  const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
+  return Math.round(avg * 10) / 10; // one decimal
+}
+
+function fallbackFeedback({ role, interviewType, technologies }) {
+  const tech = technologies?.length
+    ? technologies.join(", ")
+    : "your target stack";
+  return {
+    feedback: `Good effort overall. For a ${role} ${interviewType} interview, focus on clearer explanations and more structured answers.`,
+    detailedAnalysis: {
+      summary: `Fallback analysis (AI key missing). Consider revising ${tech} fundamentals and practicing concise communication.`,
+      notes: [
+        "Use STAR format for behavioral answers.",
+        "Explain trade-offs and edge cases in technical answers.",
+        "Practice thinking aloud during problem solving.",
+      ],
+    },
+    technicalScore: 6,
+    communicationScore: 6,
+    problemSolvingScore: 6,
+    overallScore: 6,
+    strengths: ["Willingness to engage", "Basic understanding"],
+    weakAreas: ["Depth in key topics", "Answer structure"],
+  };
 }

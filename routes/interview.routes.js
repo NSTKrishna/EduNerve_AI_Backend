@@ -1,13 +1,13 @@
 import express from "express";
-import { 
-  startInterview, 
+import {
+  startInterview,
   completeInterview,
   getInterview,
   getUserInterviews,
-  healthCheck 
+  healthCheck,
 } from "../controllers/interview.controller.js";
 import { validateInterviewRequest } from "../middlewares/validation.middleware.js";
-import { authenticate, optionalAuth } from "../middlewares/auth.middleware.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -15,15 +15,20 @@ const router = express.Router();
 router.get("/health", healthCheck);
 
 // Start interview route (requires authentication)
-router.post("/start-interview", authenticate, validateInterviewRequest, startInterview);
+router.post(
+  "/start-interview",
+  authenticate,
+  validateInterviewRequest,
+  startInterview,
+);
 
 // Complete interview and get feedback
 router.post("/complete", authenticate, completeInterview);
 
-// Get specific interview with recommendations
-router.get("/:interviewId", getInterview);
-
 // Get user's interview history (requires auth)
 router.get("/user/history", authenticate, getUserInterviews);
+
+// Get specific interview
+router.get("/:interviewId", getInterview);
 
 export default router;
