@@ -48,6 +48,7 @@ app.get("/", (req, res) => {
       interviewHealth: "GET /api/interview/health",
       startInterview: "POST /api/interview/start-interview",
       completeInterview: "POST /api/interview/complete",
+      tokenBalance: "GET /api/token",
       authRegister: "POST /api/auth/register",
       authLogin: "POST /api/auth/login",
       authProfile: "GET /api/auth/profile",
