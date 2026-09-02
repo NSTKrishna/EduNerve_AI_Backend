@@ -48,7 +48,7 @@ Provide ONLY the system prompt text that will be given to the AI interviewer. Ma
 
     const completion = await groq.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "llama3-8b-8192",
+      model: "openai/gpt-oss-20b",
     });
 
     const generatedPrompt = completion.choices[0]?.message?.content || "";
