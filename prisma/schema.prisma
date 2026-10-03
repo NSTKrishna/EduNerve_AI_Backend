@@ -6,51 +6,85 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
- 
+
+enum InterviewStatus {
+  in_progress
+  completed
+  abandoned
+}
+
+enum InterviewType {
+  technical
+  behavioral
+  mixed
+}
+
+enum TokenReason {
+  SIGNUP_GRANT
+  INTERVIEW_START
+  INTERVIEW_REFUND
+  ADMIN_ADJUSTMENT
+}
+
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String?   
-  name          String
-  avatar        String?   
-  googleId      String?   @unique 
-  provider      String?   
-  role          String?   
-  experience    String?   
-  skills        String[] 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  name       String
+  role       String?
+  experience String?
+  skills     String[]
+  tokens     Int      @default(100)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
   interviews    Interview[]
+  transactions  TokenTransaction[]
 }
 
 model Interview {
-  id                String   @id @default(uuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  role          String
+  interviewType InterviewType
+  technologies  String[]
+  duration      Int? // seconds
 
-  role              String
-  interviewType     String  
-  technologies      String[] 
-  duration          Int? 
-  
-  status            String   @default("in_progress")
-  startedAt         DateTime @default(now())
-  completedAt       DateTime?
-  
-  transcript        Json?   
-  aiAnalysis        Json?    
-  feedback          String? 
-  
-  technicalScore    Float?    
-  communicationScore Float?  
-  problemSolvingScore Float? 
-  overallScore      Float?   
-  
-  weakAreas         String[] 
-  strengths         String[] 
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  status        InterviewStatus @default(in_progress)
+  tokensCharged Int             @default(0)
+  startedAt     DateTime        @default(now())
+  completedAt   DateTime?
+
+  transcript Json?
+  aiAnalysis Json?
+  feedback   String?
+
+  // All scores use a 0-10 scale.
+  technicalScore      Float?
+  communicationScore  Float?
+  problemSolvingScore Float?
+  overallScore        Float?
+
+  weakAreas String[]
+  strengths String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startedAt])
+}
+
+model TokenTransaction {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta        Int
+  balanceAfter Int
+  reason       TokenReason
+  interviewId  String?
+  createdAt    DateTime    @default(now())
+
+  @@index([userId, createdAt])
 }
