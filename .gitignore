@@ -1,7 +1,11 @@
 node_modules
-# Keep environment variables out of version control
+
+# Environment variables (keep .env.example tracked)
 .env
-.env.example
+.env.*
+!.env.example
 
 /generated/prisma
-       
+.vscode/
+.DS_Store
+coverage/
