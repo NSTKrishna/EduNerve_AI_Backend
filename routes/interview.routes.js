@@ -1,38 +1,25 @@
 import express from "express";
-import {
-  startInterview,
-  completeInterview,
-  getInterview,
-  getUserInterviews,
-  healthCheck,
-} from "../controllers/interview.controller.js";
-import { validateInterviewRequest } from "../middlewares/validation.middleware.js";
+import * as interview from "../controllers/interview.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
-import { Token, getTokenBalance } from "../controllers/token.controller.js";
+import { interviewLimiter } from "../middlewares/rateLimit.middleware.js";
+import { validate } from "../middlewares/validate.middleware.js";
+import {
+  completeInterviewSchema,
+  historyQuerySchema,
+  startInterviewSchema,
+} from "../schemas/index.js";
 
 const router = express.Router();
 
-// Health check route
-router.get("/health", healthCheck);
+router.use(authenticate);
 
-// Start interview route (requires authentication)
-router.post(
-  "/start-interview",
-  authenticate,
-  Token,
-  validateInterviewRequest,
-  startInterview,
-);
+// Static paths first: `/:interviewId` would otherwise swallow them.
+router.get("/options", interview.getOptions);
+router.get("/user/history", validate(historyQuerySchema, "query"), interview.getUserInterviews);
 
-// Complete interview and get feedback
-router.post("/complete", authenticate, completeInterview);
+router.post("/start-interview", interviewLimiter, validate(startInterviewSchema), interview.startInterview);
+router.post("/complete", interviewLimiter, validate(completeInterviewSchema), interview.completeInterview);
 
-// Get user's interview history (requires auth)
-router.get("/user/history", authenticate, getUserInterviews);
-
-router.get("/token", authenticate, getTokenBalance);
-
-// Get specific interview
-router.get("/:interviewId", getInterview);
+router.get("/:interviewId", interview.getInterview);
 
 export default router;
