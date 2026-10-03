@@ -1,73 +1,27 @@
 import jwt from "jsonwebtoken";
 import config from "../config/config.js";
-import { Token } from "../controllers/token.controller.js";
+import { AppError } from "../utils/AppError.js";
 
-export function authenticate(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization;
-
-    console.log("Auth middleware:", {
-      hasAuthHeader: !!authHeader,
-      authHeader: authHeader?.substring(0, 30) + "...",
-      path: req.path,
-    });
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("No valid auth header");
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required. Please provide a valid token.",
-      });
-    }
-
-    const token = authHeader.substring(7); // Remove "Bearer " prefix
-
-    try {
-      const decoded = jwt.verify(token, config.jwtSecret || "your-secret-key");
-      req.user = decoded; // Add user info to request
-      next();
-    } catch (jwtError) {
-      if (jwtError.name === "TokenExpiredError") {
-        return res.status(401).json({
-          success: false,
-          error: "Token has expired. Please login again.",
-        });
-      }
-      return res.status(401).json({
-        success: false,
-        error: "Invalid token. Please login again.",
-      });
-    }
-  } catch (error) {
-    console.error("Error in authentication middleware:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Authentication failed",
-    });
-  }
+export function signToken(user) {
+  return jwt.sign({ userId: user.id, email: user.email }, config.jwtSecret, {
+    expiresIn: config.jwtExpiresIn,
+  });
 }
 
-// Optional authentication - doesn't fail if no token
-export function optionalAuth(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization;
+export function authenticate(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    return next(AppError.unauthorized("Authentication required. Please provide a valid token."));
+  }
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.substring(7);
-      try {
-        const decoded = jwt.verify(
-          token,
-          config.jwtSecret || "your-secret-key",
-        );
-        req.user = decoded;
-      } catch (jwtError) {
-        // Token is invalid but we don't fail, just continue without user
-        req.user = null;
-      }
-    }
+  try {
+    req.user = jwt.verify(header.slice(7), config.jwtSecret);
     next();
   } catch (error) {
-    console.error("Error in optional auth middleware:", error);
-    next();
+    const message =
+      error.name === "TokenExpiredError"
+        ? "Token has expired. Please login again."
+        : "Invalid token. Please login again.";
+    next(new AppError(401, error.name === "TokenExpiredError" ? "TOKEN_EXPIRED" : "INVALID_TOKEN", message));
   }
 }
