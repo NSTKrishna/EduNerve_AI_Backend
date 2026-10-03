@@ -3,7 +3,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  // Clear existing data (optional)
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to seed (this deletes all users and interviews) when NODE_ENV=production");
+  }
+
+  // Clear existing data
   await prisma.interview.deleteMany();
   await prisma.user.deleteMany();
 
