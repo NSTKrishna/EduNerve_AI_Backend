@@ -1,61 +1,53 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import config from "./config/config.js";
 import routes from "./routes/index.js";
-import {
-  errorHandler,
-  notFoundHandler,
-} from "./middlewares/validation.middleware.js";
+import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
+import { apiLimiter } from "./middlewares/rateLimit.middleware.js";
+import { requestLogger } from "./utils/logger.js";
 
 const app = express();
 
-const corsOptions = {
-  origin: [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:3000",
-    // Vercel deployments (preview + production)
-    "https://edu-nerve-ai-frontend.vercel.app",
-    "https://edu-nerve-ai-frontend-liard.vercel.app",
-    "https://edu-nerve-ai-frontend-loaznc6p4-nstkrishnas-projects.vercel.app",
-  ],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  exposedHeaders: ["Content-Length", "X-Requested-With"],
-  optionsSuccessStatus: 200,
-};
+if (config.trustProxy) app.set("trust proxy", config.trustProxy);
 
-app.use(cors(corsOptions));
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:3000",
+  "https://edu-nerve-ai-frontend.vercel.app",
+  "https://edu-nerve-ai-frontend-liard.vercel.app",
+  ...config.corsOrigins,
+]);
+// Vercel preview deployments of this project: edu-nerve-ai-frontend-<hash>-nstkrishnas-projects.vercel.app
+const previewOrigin = /^https:\/\/edu-nerve-ai-frontend(-[a-z0-9]+)?-nstkrishnas-projects\.vercel\.app$/;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet());
+app.use(
+  cors({
+    origin: (origin, callback) =>
+      callback(null, !origin || allowedOrigins.has(origin) || previewOrigin.test(origin)),
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    optionsSuccessStatus: 200,
+  }),
+);
 
-if (process.env.NODE_ENV === "development") {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`, req.body);
-    next();
-  });
-}
+if (config.nodeEnv === "development") app.use(requestLogger);
 
-app.use("/api", routes);
+// Transcripts are the only large payload; everything else stays small.
+app.use("/api/interview/complete", express.json({ limit: "1mb" }));
+app.use("/api/v1/interview/complete", express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "100kb" }));
+
+app.use("/api", apiLimiter);
+app.use("/api/v1", routes);
+app.use("/api", routes); // un-versioned alias used by the current frontend
 
 app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Welcome to EduNerve AI Mock Interview API",
-    version: "1.0.0",
-    endpoints: {
-      interviewHealth: "GET /api/interview/health",
-      startInterview: "POST /api/interview/start-interview",
-      completeInterview: "POST /api/interview/complete",
-      tokenBalance: "GET /api/token",
-      authRegister: "POST /api/auth/register",
-      authLogin: "POST /api/auth/login",
-      authProfile: "GET /api/auth/profile",
-      authDashboard: "GET /api/auth/dashboard",
-    },
-  });
+  res.json({ success: true, message: "EduNerve AI Mock Interview API", docs: "See API_CONTRACT.md" });
 });
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 

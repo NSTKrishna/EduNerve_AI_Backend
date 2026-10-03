@@ -1,239 +1,162 @@
-# EduNerve Backend — End-to-End Guide (Frontend Sync)
+# EduNerve Backend — API Contract
 
-This document is the **single source of truth** for how your frontend should talk to this backend.
+Single source of truth for how the frontend talks to this backend. Keep it in sync with
+`schemas/index.js` (request validation) and the services in `services/`.
 
-## Base URL
+## Conventions
 
-- Local base path: `http://localhost:3000/api`
+- **Base URL:** `http://localhost:3000/api` (also served at `/api/v1`). The frontend reads it from `VITE_API_URL`.
+- **Auth:** protected routes need `Authorization: Bearer <JWT>`. JWTs last 7 days (`JWT_EXPIRES_IN`).
+- **Bodies:** JSON, max 100 KB (`POST /interview/complete`: 1 MB).
+- **Success:** `{ "success": true, ...fields }`
+- **Error:** always the same shape, so clients only need one handler:
 
-## Auth header
+  ```json
+  { "success": false, "code": "INSUFFICIENT_TOKENS", "error": "Human readable message", "details": [{ "field": "role", "message": "Unknown role" }] }
+  ```
 
-For protected routes send:
+  `details` appears only for validation errors. **Switch on `code`, never on the message text.**
 
-- `Authorization: Bearer <JWT>`
-- `Content-Type: application/json`
+| HTTP | `code` | Meaning |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` / `INVALID_JSON` | Bad input (`details` lists the fields) |
+| 401 | `UNAUTHORIZED` / `INVALID_TOKEN` / `TOKEN_EXPIRED` / `INVALID_CREDENTIALS` | Missing, bad or expired JWT; wrong login |
+| 402 | `INSUFFICIENT_TOKENS` | Not enough tokens to start an interview |
+| 403 | `INVALID_PASSWORD` | Wrong current password (change password / delete account) |
+| 404 | `NOT_FOUND` | Unknown route, or not found **for this user** (other users' interviews look like 404) |
+| 409 | `EMAIL_TAKEN` / `ALREADY_FINISHED` / `CONFLICT` | Duplicate email; interview already submitted |
+| 413 | `PAYLOAD_TOO_LARGE` | Body over the limit |
+| 429 | `RATE_LIMITED` | Too many requests |
+| 5xx | `INTERNAL_ERROR` / `DB_UNAVAILABLE` | Server problem |
 
----
+- **Scores** are numbers from **0 to 10** (one decimal), or `null` when there was no AI evaluation. Show `7.5 / 10`, or multiply by 10 for a percent.
+- **Timestamps** are ISO 8601 strings. **Durations** are seconds.
 
-## ✅ What this backend supports
+## Environment variables
 
-- Email/password auth (JWT)
-- Start an interview (returns Vapi `publicKey` + AI system prompt)
-- Complete an interview (stores transcript + AI feedback/scores for dashboard)
-- Dashboard/profile endpoints to render the UI
-
-Google OAuth is **removed** from the codebase.
-
----
-
-## Environment variables (.env)
-
-Create a `.env` file in the project root with (minimum):
-
-- `DATABASE_URL` (Postgres connection)
-- `JWT_SECRET` (JWT signing secret)
-
-For AI features:
-
-- `GROQ_API_KEY` (used by `services/gemini.service.js` + `services/feedback.service.js`)
-
-For interview voice (Vapi):
-
-- `VAPI_PUBLIC_KEY`
-- `VAPI_SECRET_KEY` (not returned to frontend; used server-side if needed later)
+See `.env.example`. Required to boot: `DATABASE_URL`, `JWT_SECRET`. In production also `GROQ_API_KEY`, `VAPI_PUBLIC_KEY`.
+Optional: `CORS_ORIGINS` (comma separated), `LLM_MODEL`, `VAPI_MODEL`, `VAPI_VOICE_ID`, `TRUST_PROXY`.
 
 ---
 
-## End-to-end flows (what frontend should do)
+## Health
 
-### Flow A: Login → Start Interview (Vapi) → Complete Interview → Show in Dashboard
-
-1. User logs in (`POST /auth/login`) and frontend stores `token`.
-
-2. Frontend calls `POST /interview/start-interview` (protected) to create an Interview session.
-
-- Backend returns `interviewId`, `publicKey` (Vapi), `systemPrompt`, `interviewConfig`.
-
-3. Frontend starts Vapi call using the returned `publicKey` and uses the returned `systemPrompt` as the call/system instructions.
-
-4. When the Vapi session ends, frontend sends transcript + duration to `POST /interview/complete` (protected).
-
-- Backend generates AI feedback (or fallback feedback if AI key missing) and stores it into the `Interview` table.
-
-5. Dashboard screens fetch:
-
-- `GET /auth/dashboard` (protected) for KPI numbers
-- `GET /auth/profile` (protected) for the latest `interviews[]` (with feedback/scores) and user profile data
-
----
+- `GET /health` → `{ success, status: "ok", timestamp }` (503 `DB_UNAVAILABLE` if the database can't be reached)
 
 ## Auth (`/auth`)
 
-### Register
+User object returned everywhere:
+`{ id, email, name, role, experience, skills: string[], tokens: number, createdAt }`
 
-- **POST** `/auth/register`
-- Body:
-  - `email` (string, required)
-  - `password` (string, required, >= 6 chars)
-  - `name` (string, required)
-  - `role` (string, optional)
-  - `experience` (string, optional)
-  - `skills` (string[], optional)
-- Response: `{ success, message, user, token }`
+| Route | Body | Response |
+|---|---|---|
+| `POST /auth/register` | `email`, `password` (8–72 chars), `name`; optional `role`, `experience`, `skills[]` | `201 { user, token }` — new users get 100 tokens |
+| `POST /auth/login` | `email`, `password` | `{ user, token }` |
+| `GET /auth/profile` 🔒 | — | `{ user }` (no interviews — use the history endpoint) |
+| `PUT /auth/profile` 🔒 | any of `name`, `role`, `experience`, `skills[]` (`""` / `[]` clears) | `{ user }` |
+| `PUT /auth/password` 🔒 | `currentPassword`, `newPassword` | `{ message }` |
+| `DELETE /auth/me` 🔒 | `password` | `{ message }` — deletes the account, interviews and token history |
+| `GET /auth/dashboard` 🔒 | — | see below |
 
-Frontend notes:
+Emails are trimmed and lower-cased. Login/register/password routes are rate limited (30 per 15 min per IP).
 
-- Save `token` and attach it to all protected requests.
+### `GET /auth/dashboard`
 
-### Login
-
-- **POST** `/auth/login`
-- Body: `email`, `password`
-- Response: `{ success, message, user, token }`
-
-Frontend notes:
-
-- Save `token`.
-
-### Get Profile (dashboard feed)
-
-- **GET** `/auth/profile` (protected)
-
-Response: `{ success, user }`
-
-This is the best endpoint to build the dashboard “recent activity” sections.
-
-Includes:
-
-- `user.interviews[]` (latest 10)
-  - contains: `feedback`, `strengths`, `weakAreas`, `technicalScore`, `communicationScore`, `problemSolvingScore`, `overallScore`, `aiAnalysis`, `transcript`
-
-### Get Dashboard Stats
-
-- **GET** `/auth/dashboard` (protected)
-- Response:
-  ```json
-  {
-    "success": true,
-    "data": {
-      "skillsTracked": 0,
-      "interviewSessions": 0
-    }
+```json
+{
+  "success": true,
+  "data": {
+    "tokens": 80,
+    "skillsTracked": 4,
+    "interviewSessions": 7,
+    "completedInterviews": 5,
+    "avgScore": 7.2,
+    "avgScores": { "technical": 7.5, "communication": 7, "problemSolving": 7.1 },
+    "scoreTrend": [
+      { "id": "…", "date": "2026-10-01T…", "overall": 6.5, "technical": 7, "communication": 6, "problemSolving": 6.5 }
+    ]
   }
-  ```
+}
+```
 
-### Update Profile
+`scoreTrend` holds the last 10 scored interviews, oldest first. Averages ignore interviews without scores.
 
-- **PUT** `/auth/profile` (protected)
-- Body (any subset): `name`, `role`, `experience`, `skills`
-- Response: `{ success, message, user }`
+## Tokens (`/token`) 🔒
 
----
+- `GET /token` → `{ tokensRemaining }`
+- `GET /token/transactions?limit=30` → `{ transactions: [{ id, delta, balanceAfter, reason, interviewId, createdAt }] }`
+  `reason` is `SIGNUP_GRANT`, `INTERVIEW_START`, `INTERVIEW_REFUND` or `ADMIN_ADJUSTMENT`.
 
-## Interview (`/interview`)
+An interview costs **10 tokens**, charged when it starts and refunded automatically if the candidate never spoke.
+Top up manually with `npm run tokens:grant -- user@example.com 50`.
 
-### Health
+## Interview (`/interview`) 🔒 — every route requires auth
 
-- **GET** `/interview/health`
+### `GET /interview/options`
 
-### Start Interview (Vapi initialization)
+```json
+{ "roles": { "Frontend Developer": ["React", "Vue.js", "…"], "…": [] },
+  "interviewTypes": ["technical", "behavioral", "mixed"], "maxTechnologies": 8, "tokenCost": 10, "durationMinutes": 10 }
+```
 
-- **POST** `/interview/start-interview` (protected)
-- Body:
-  ```json
-  {
-    "role": "Frontend Developer",
-    "interviewType": "technical",
-    "technologies": ["React", "JavaScript"]
-  }
-  ```
-- Response:
+Render the setup form from this; the server validates against the same lists.
 
-Response fields:
+### `POST /interview/start-interview`
 
-- `publicKey`: use this in frontend to initialize Vapi.
-- `systemPrompt`: pass to Vapi as the system instructions.
-- `interviewId`: must be persisted client-side (state/localStorage) and used for completion.
-- `interviewConfig`: optional, for UI display (sections + duration).
-
-Frontend contract:
-
-- Start interview UI only after this endpoint succeeds.
-- If you lose the `interviewId`, you can’t complete that session.
-
-### Complete Interview (store transcript + AI feedback)
-
-- **POST** `/interview/complete` (protected)
-- Body:
-  ```json
-  {
-    "interviewId": "uuid",
-    "transcript": [],
-    "duration": 420
-  }
-  ```
-- Response:
+Body: `{ role, interviewType, technologies[] }` — `role` must be a key of `roles`, every technology must belong to that role.
 
 Response:
 
-- `interview`: updated Interview DB record (what you should show on the report screen)
-- `feedback`: structured feedback object (same content stored into the interview)
+```json
+{
+  "success": true,
+  "interviewId": "uuid",
+  "publicKey": "<vapi public key>",
+  "role": "…", "interviewType": "…", "technologies": ["…"],
+  "systemPrompt": "You are …",
+  "interviewConfig": { "type": "mock_interview", "durationMinutes": 10, "durationSeconds": 600, "sections": ["Introduction", "…"] },
+  "assistantConfig": { "name": "…", "model": {}, "voice": {}, "firstMessage": "…", "maxDurationSeconds": 660 },
+  "tokensRemaining": 90
+}
+```
 
-Important:
+Start the Vapi call with `new Vapi(publicKey)` and `vapi.start(assistantConfig)`. Keep `interviewId`; you need it to finish.
+Errors: `402 INSUFFICIENT_TOKENS` (nothing is charged), `400 VALIDATION_ERROR`.
 
-- `transcript` can be an array or object; backend stores it as JSON.
-- If AI fails or key missing, backend returns fallback feedback so dashboard still works.
+### `POST /interview/complete`
 
-### Interview History
+Body: `{ interviewId, transcript: [{ speaker: "Interviewer" | "You", text, timestamp? }], duration? }` (max 500 turns).
+Submit exactly once per interview.
 
-- **GET** `/interview/user/history` (protected)
+Response: `{ success, message, interview, feedback, feedbackStatus, refunded, tokensRemaining }`
 
-### Interview Report
+`feedbackStatus`:
+- `"ai"` — scored; `interview` has scores, `feedback`, `strengths`, `weakAreas`, `aiAnalysis`.
+- `"fallback"` — saved, but the AI evaluation failed. All scores are `null`; tell the user.
+- `"none"` — the candidate never spoke. Interview is marked `abandoned`, `refunded` tokens are returned.
 
-- **GET** `/interview/:interviewId`
+Errors: `404 NOT_FOUND` (not yours), `409 ALREADY_FINISHED`.
+
+### `GET /interview/user/history`
+
+Query: `limit` (1–50, default 20), `cursor` (the previous `nextCursor`), `status`, `interviewType`, `role`.
+Response: `{ interviews: [summary], count, total, nextCursor }` — `nextCursor` is `null` on the last page.
+
+A summary has everything except `transcript` and `aiAnalysis`:
+`id, role, interviewType, technologies, status, duration, startedAt, completedAt, feedback, strengths, weakAreas, technicalScore, communicationScore, problemSolvingScore, overallScore`.
+`status` is `in_progress`, `completed` or `abandoned`.
+
+### `GET /interview/:interviewId`
+
+`{ interview }` — the full record including `transcript` and `aiAnalysis`. Only the owner can read it (404 otherwise).
 
 ---
 
-## Error handling (frontend expectations)
+## Frontend flow
 
-- On validation errors, backend returns `400` with `{ success: false, error: "..." }`.
-- On auth errors, backend returns `401` with `{ success: false, error: "..." }`.
-- If a route is wrong, backend returns `404` with `{ success: false, error: "Route ... not found" }`.
-
----
-
-## Route map (quick reference)
-
-### Auth
-
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/profile` (protected)
-- `GET /auth/dashboard` (protected)
-- `PUT /auth/profile` (protected)
-
-### Interview
-
-- `GET /interview/health`
-- `POST /interview/start-interview` (protected)
-- `POST /interview/complete` (protected)
-- `GET /interview/user/history` (protected)
-- `GET /interview/:interviewId`
-
----
-
-## Frontend flow (recommended)
-
-### Interview
-
-1. Login → save token
-2. Start interview → get `interviewId`, `publicKey`, `systemPrompt`
-3. Run Vapi session with `publicKey` and `systemPrompt`
-4. On call end → send transcript to `/interview/complete`
-5. Dashboard loads:
-   - `/auth/dashboard` for KPIs
-   - `/auth/profile` for recent interviews and feedback
-
-### Notes
-
-- Quiz endpoints are **not supported** in this backend.
+1. Login/register → store `token`.
+2. `GET /interview/options` → render the form.
+3. `POST /interview/start-interview` → start Vapi with `assistantConfig`, show `tokensRemaining`.
+4. Collect final transcript turns while the call runs.
+5. When the call ends (user clicks End **or** Vapi ends it) → `POST /interview/complete` once → navigate to the report for `interview.id`.
+6. Dashboard: `GET /auth/dashboard` + `GET /interview/user/history?limit=5`.
